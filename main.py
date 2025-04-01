@@ -18,26 +18,26 @@ class TrianguloConIncentro(CrearFiguras, Tools):  # Heredás de la clase utilita
 
 
         # Dibujar el círculo usando los dos puntos
-        circulo=self.dibujar_circulo([0,2],c=[1,0])
+        circuloCentral=self.dibujar_circulo_auxiliar([0,2],c=[1,0])
         #
-        print("circulo: ",circulo.get_l)
+        print("circulo: ",circuloCentral.get_l)
 
-        segmentoIzquierdo=self.crear_figura_auxiliar([(3, 2), (0, 2)])
-        #
-        # circulo2=self.dibujar_circulo(r=segmentoIzquierdo.get_tamaño_lado("AB"),c=circulo.get_r)
-        #
-        # puntos = self.interseccion_figuras(circulo, circulo2)
-        # for p in puntos:
-        #     self.crear_punto(p, color=GREEN)
+        segmentoIzquierdo=self.crear_figura_auxiliar([circuloCentral.get_l, (0, 2)])
 
 
+        circuloAuxiliar=self.dibujar_circulo_auxiliar(r=segmentoIzquierdo.get_tamaño_lado("AB"),c=circuloCentral.get_r)
 
-        # self.crear_punto(self.seleccionar_punto(12, puntos), color=YELLOW)
+        puntos = self.interseccion_figuras(circuloCentral, circuloAuxiliar)
+        for p in puntos:
+            self.crear_punto(p, color=GREEN)
 
-        # Agregar un texto a la escena
-        # texto = Text("Vamos a jugar al balon cesto y me das mi smartphone?")
-        # texto.to_edge(DOWN)  # Posiciona el texto en la parte inferior
-        # self.play(Write(texto))
+
+        interseccionDeArriba=self.seleccionar_punto(12, puntos)
+        self.crear_punto(interseccionDeArriba, color=YELLOW)
+
+        self.crear_figura_auxiliar([interseccionDeArriba,circuloAuxiliar.get_c])
+
+        paralela= self.crear_figura_auxiliar([(-6,2), (6,2)])
 
         self.wait(10, frozen_frame=True)
 

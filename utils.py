@@ -3,9 +3,6 @@ import math
 import numpy as np
 from manim.utils.color import color_to_rgb, rgb_to_color
 
-# Parámetros dash por defecto (hardcodeados)
-DEFAULT_DASH_LENGTH = 0.01
-DEFAULT_DASHED_RATIO = 0.1
 
 class Poligono(Polygon):
     def __init__(self, vertices, etiquetas, **kwargs):
@@ -39,6 +36,7 @@ class Poligono(Polygon):
             length += np.linalg.norm(p2 - p1)
         return length
 
+
 class Tools(Scene):
     def invertir_color(color):
         rgb = np.array(color_to_rgb(color))
@@ -69,17 +67,19 @@ class Tools(Scene):
             d = np.linalg.norm(c2 - c1)
             if d > r1 + r2 or d < abs(r1 - r2) or d == 0:
                 return []
-            a = (r1**2 - r2**2 + d**2) / (2 * d)
-            h = math.sqrt(r1**2 - a**2)
+            a = (r1 ** 2 - r2 ** 2 + d ** 2) / (2 * d)
+            h = math.sqrt(r1 ** 2 - a ** 2)
             p3 = c1 + a * (c2 - c1) / d
             offset = h * np.array([-(c2[1] - c1[1]) / d, (c2[0] - c1[0]) / d])
             i1 = p3 + offset
             i2 = p3 - offset
             return [i1.tolist(), i2.tolist()]
+
         # Caso general (segmentos)
         def segmentos(figura):
             v = figura.get_vertices()
             return [(v[i], v[(i + 1) % len(v)]) for i in range(len(v))]
+
         def interseccion_segmentos(a1, a2, b1, b2):
             da = a2 - a1
             db = b2 - b1
@@ -90,11 +90,14 @@ class Tools(Scene):
                 return None
             num = np.dot(dap, dp)
             inter = (num / denom) * db + b1
+
             def dentro(p, v1, v2):
                 return all(np.min([v1[i], v2[i]]) - 1e-8 <= p[i] <= np.max([v1[i], v2[i]]) + 1e-8 for i in range(2))
+
             if dentro(inter, a1, a2) and dentro(inter, b1, b2):
                 return [inter[0], inter[1]]
             return None
+
         intersecciones = []
         for s1 in segmentos(f1):
             for s2 in segmentos(f2):
@@ -120,20 +123,21 @@ class Tools(Scene):
         extremo1 = punto_en_segmento + perpendicular
         extremo2 = punto_en_segmento - perpendicular
         line_perp = DashedLine(extremo1, extremo2, color=color, stroke_width=stroke_width,
-                                dash_length=dash_length, dashed_ratio=dashed_ratio)
+                               dash_length=dash_length, dashed_ratio=dashed_ratio)
         self.play(Create(line_perp))
         return line_perp
 
     def dibujar_mediatriz(self, figura, escala=1.0, color=YELLOW):
         return self.dibujar_linea_perpendicular(figura, t=0.5, escala=escala, color=color)
 
+
 class Scene(Scene):
     def crear_ejes_con_camara(self, x_range, y_range):
         ejes = NumberPlane(
             x_range=x_range,
             y_range=y_range,
-            background_line_style={"stroke_opacity": 0.4, "stroke_color": LIGHT_GRAY, "stroke_width": 0.8},
-            axis_config={"stroke_color": LIGHT_GRAY, "stroke_width": 0.5,
+            background_line_style={"stroke_opacity": 0    , "stroke_color": LIGHT_GRAY, "stroke_width": 0.8},
+            axis_config={"stroke_color": LIGHT_GRAY, "stroke_width": 0.8,
                          "include_ticks": True, "include_numbers": True}
         )
         plane_width = ejes.width
@@ -148,6 +152,7 @@ class Scene(Scene):
         self.play(Create(ejes), run_time=0.5)
         return ejes
 
+
 class CrearFiguras(Scene):
     def crear_punto(self, coords, color=BLUE, radius=0.05, stroke_width=0.5, fill_opacity=1.0, **kwargs):
         if len(coords) == 2:
@@ -157,7 +162,9 @@ class CrearFiguras(Scene):
         self.play(Create(punto))
         return punto
 
-    def dibujar_circulo(self, *puntos, c=None, d=None, r=None, color=BLUE, stroke_width=2.0, dashed=False):
+    def dibujar_circulo(self, *puntos, c=None, d=None, r=None, color=BLUE, stroke_width=2.0,
+                        dashed=False, dash_length=0.5,
+                        dashed_ratio=0.7, num_dashes=None):
         def to_array(p):
             arr = np.array(p)
             if arr.shape == (2,):
@@ -216,17 +223,27 @@ class CrearFiguras(Scene):
                 radio = np.linalg.norm(centro - A)
             else:
                 raise ValueError("Entrada no válida. Usá 1, 2 o 3 puntos, o c con r/d/punto.")
+        # Crear el círculo original
         circulo = CirculoConAccesos(center=centro, radius=radio, color=color, stroke_width=stroke_width)
         if dashed:
-            # Para aplicar dash al círculo, calculamos el perímetro (2*pi*radio)
+            # Calculamos la circunferencia (2*pi*radio) y definimos num_dashes si no se pasa
             longitud = 2 * math.pi * radio
-            num_dashes = max(3, int(longitud / DEFAULT_DASH_LENGTH))
-            # Usamos DashedCircleWithProperties para preservar las propiedades originales
-            circulo = DashedCircleWithProperties(circulo, dashed_ratio=DEFAULT_DASHED_RATIO, num_dashes=num_dashes)
-        self.play(Create(circulo))
+            if num_dashes is None:
+                num_dashes = max(3, int(longitud / dash_length))
+            circuloConDashs = DashedCircleWithProperties(circulo, dashed_ratio=dashed_ratio, num_dashes=num_dashes)
+            self.play(Create(circuloConDashs))
+        else:
+            self.play(Create(circulo))
         return circulo
 
-    def crear_figura(self, puntos_etiquetados, color=WHITE, mostrar_vertices=True, mostrar_lados=True, dashed=False):
+    def dibujar_circulo_auxiliar(self, *puntos, c=None, d=None, r=None, color=BLUE, stroke_width=2.0):
+        """
+        Función auxiliar que dibuja el círculo en versión dash, similar a crear_figura_auxiliar.
+        """
+        return self.dibujar_circulo(*puntos, c=c, d=d, r=r, color=color, stroke_width=stroke_width, dashed=True, )
+
+    def crear_figura(self, puntos_etiquetados, color=WHITE, mostrar_vertices=True, mostrar_lados=True, dashed=False,
+                     stroke_width=5):
         vertices = []
         etiquetas = []
         letras = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -240,24 +257,39 @@ class CrearFiguras(Scene):
                 raise ValueError("Cada punto debe ser (etiqueta, x, y) o (x, y)")
             vertices.append(np.array([x, y, 0]))
             etiquetas.append(tag)
-        figura = Poligono(vertices, etiquetas, color=color)
+        # Se pasa stroke_width al crear el polígono
+        figura = Poligono(vertices, etiquetas, color=color, stroke_width=stroke_width)
         if dashed:
             longitud = figura.get_length()
-            num_dashes = max(3, int(longitud / DEFAULT_DASH_LENGTH))
-            figura = DashedVMobject(figura, dashed_ratio=DEFAULT_DASHED_RATIO, num_dashes=num_dashes)
-        self.play(Create(figura))
+            num_dashes = max(40, int(longitud))
+            # Se pasa también stroke_width para que el dash tenga el mismo grosor
+            figuraConDashs = DashedVMobject(figura, dashed_ratio=0.4, num_dashes=num_dashes, stroke_width=stroke_width)
+            self.play(Create(figuraConDashs))
+        else:
+            self.play(Create(figura))
         if mostrar_vertices:
             self.etiquetar_vertices(vertices, etiquetas)
         if mostrar_lados:
             self.etiquetar_lados(vertices)
         return figura
 
-    def crear_figura_sin_labels(self, puntos_etiquetados, color=WHITE, dashed=False):
-        return self.crear_figura(puntos_etiquetados, color=color,
-                                 mostrar_vertices=False, mostrar_lados=False, dashed=dashed)
+    def crear_figura_sin_labels(self, puntos_etiquetados, color=WHITE, dashed=False, stroke_width=2):
+        return self.crear_figura(
+            puntos_etiquetados,
+            color=color,
+            mostrar_vertices=False,
+            mostrar_lados=False,
+            dashed=dashed,
+            stroke_width=stroke_width
+        )
 
-    def crear_figura_auxiliar(self, puntos_etiquetados, color=WHITE, dashed=True):
-        return self.crear_figura_sin_labels(puntos_etiquetados, color=color, dashed=dashed)
+    def crear_figura_auxiliar(self, puntos_etiquetados, color=WHITE, dashed=True, stroke_width=2):
+        return self.crear_figura_sin_labels(
+            puntos_etiquetados,
+            color=color,
+            dashed=dashed,
+            stroke_width=stroke_width
+        )
 
     def crear_punto(self, coords, color=BLUE, radius=0.05, stroke_width=0.5, fill_opacity=1.0, **kwargs):
         if len(coords) == 2:
@@ -322,6 +354,7 @@ class CrearFiguras(Scene):
                         return rf"{k}\sqrt{{{base}}}"
         return f"{numero:.2f}".rstrip("0").rstrip(".")
 
+
 class CirculoConAccesos(Circle):
     def __init__(self, center, radius, **kwargs):
         super().__init__(radius=radius, **kwargs)
@@ -348,6 +381,11 @@ class CirculoConAccesos(Circle):
     def get_d(self):
         p = self._centro + np.array([0, -self._radio, 0])
         return [p[0], p[1]]
+
+    @property
+    def get_c(self):
+        return [self._centro[0], self._centro[1]]
+
 
 class DashedCircleWithProperties(DashedVMobject):
     def __init__(self, original, **kwargs):
