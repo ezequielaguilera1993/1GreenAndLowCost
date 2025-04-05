@@ -2,6 +2,7 @@ from manim import *
 import math
 import numpy as np
 from manim.utils.color import color_to_rgb, rgb_to_color
+import random
 
 
 class Poligono(Polygon):
@@ -14,7 +15,7 @@ class Poligono(Polygon):
         if nombre not in self.mapeo:
             raise ValueError(f"El vértice '{nombre}' no existe.")
         coord = self.mapeo[nombre]
-        return {"x": coord[0], "y": coord[1]}
+        return (coord[0], coord[1])
 
     def get_tamaño_lado(self, nombre_lado):
         if len(nombre_lado) != 2:
@@ -35,6 +36,15 @@ class Poligono(Polygon):
             p2 = vertices[(i + 1) % len(vertices)]
             length += np.linalg.norm(p2 - p1)
         return length
+
+    def get_lado(self, nombre_lado):
+        if len(nombre_lado) != 2:
+            raise ValueError("El nombre del lado debe tener exactamente dos letras (por ejemplo, 'AB').")
+        a, b = nombre_lado
+        if a not in self.mapeo or b not in self.mapeo:
+            raise ValueError(f"Uno o ambos vértices '{a}', '{b}' no existen.")
+        return (self.get_vertice(a), self.get_vertice(b))
+
 
 
 class Tools(Scene):
@@ -136,9 +146,9 @@ class Scene(Scene):
         ejes = NumberPlane(
             x_range=x_range,
             y_range=y_range,
-            background_line_style={"stroke_opacity": 0    , "stroke_color": LIGHT_GRAY, "stroke_width": 0.8},
+            background_line_style={"stroke_opacity": 0, "stroke_color": LIGHT_GRAY, "stroke_width": 0.8},
             axis_config={"stroke_color": LIGHT_GRAY, "stroke_width": 0.8,
-                         "include_ticks": True, "include_numbers": True}
+                         "include_ticks": True, "include_numbers": False}
         )
         plane_width = ejes.width
         plane_height = ejes.height
@@ -154,13 +164,78 @@ class Scene(Scene):
 
 
 class CrearFiguras(Scene):
-    def crear_punto(self, coords, color=BLUE, radius=0.05, stroke_width=0.5, fill_opacity=1.0, **kwargs):
+
+    def dibujar_circulo_con_compas_juntos(self, r=2, color=BLUE, stroke_width=2.0, run_time=4):
+        """
+        Dibuja un círculo con la animación normal de Manim (Create),
+        y superpone un compás de dos palitos (uno fijo y otro rotante) en el centro.
+        Ambos se animan en paralelo para que parezca que el compás dibuja el círculo.
+
+        Parámetros:
+          r           : Radio del círculo
+          color       : Color del círculo y del compás
+          stroke_width: Grosor de las líneas
+          run_time    : Duración de la animación total (en segundos)
+        """
+        # 1. Crear el círculo en el centro de la pantalla
+        circle = Circle(radius=r, color=color, stroke_width=stroke_width)
+        circle.move_to(ORIGIN)  # Asegura que el centro sea (0,0). Cambia si deseas otro lugar.
+        center = circle.get_center()  # Esto debería ser [0,0,0] si no lo moviste a otro lado.
+
+        # 2. Crear los elementos del compás
+        #    a) Un pivot en el centro (la "unión" de ambos palitos)
+        pivot = Dot(center, color=color)
+
+        #    b) Palito fijo: por ejemplo, vertical y más corto
+        #       (de -0.3*r a +0.3*r alrededor del centro para que se vea anclado)
+        palito_fijo = Line(
+            start=center + DOWN * 0.3 * r,
+            end=center + UP * 0.3 * r,
+            color=color,
+            stroke_width=stroke_width
+        )
+
+        #    c) Palito rotante: desde el centro hasta la periferia a la derecha
+        palito_rotante = Line(
+            start=center,
+            end=center + RIGHT * r,
+            color=color,
+            stroke_width=stroke_width
+        )
+
+        # Agrupamos pivot y palitos en un VGroup
+        compas = VGroup(pivot, palito_fijo, palito_rotante)
+
+        # 3. Animar todo junto en un solo self.play
+        self.play(
+            # El círculo se dibuja con la animación normal de Manim
+            Create(circle),
+            # El compás aparece (los dos palitos y el pivot)
+            Create(compas),
+            # Mientras tanto, el palito rotante da una vuelta completa (360°) alrededor del centro
+            Rotate(palito_rotante, angle=TAU, about_point=center, rate_func=linear),
+            run_time=run_time
+        )
+
+        # 4. (Opcional) Esperar un momento, o remover el compás
+        # self.play(FadeOut(compas))  # si deseas ocultar el compás y dejar solo el círculo
+        # self.wait()
+
+        return circle, compas
+
+    def crear_punto(self, coords, color=BLUE, radius=0.03, stroke_width=0.3, fill_opacity=1.0, animar=False, **kwargs):
         if len(coords) == 2:
             coords = np.array([coords[0], coords[1], 0])
         punto = Dot(point=coords, color=color, radius=radius, stroke_width=stroke_width,
                     fill_opacity=fill_opacity, **kwargs)
-        self.play(Create(punto))
+        if animar:
+            self.play(Create(punto))
         return punto
+
+    def _crear_punto(self, coords, **kwargs):
+        # Se filtran los argumentos que sean None para no sobreescribir los defaults de crear_punto.
+        params = {k: v for k, v in kwargs.items() if v is not None}
+        return self.crear_punto(coords, animar=False, **params)
 
     def dibujar_circulo(self, *puntos, c=None, d=None, r=None, color=BLUE, stroke_width=2.0,
                         dashed=False, dash_length=0.5,
@@ -242,62 +317,118 @@ class CrearFiguras(Scene):
         """
         return self.dibujar_circulo(*puntos, c=c, d=d, r=r, color=color, stroke_width=stroke_width, dashed=True, )
 
-    def crear_figura(self, puntos_etiquetados, color=WHITE, mostrar_vertices=True, mostrar_lados=True, dashed=False,
-                     stroke_width=5):
+    import random
+
+    def crear_figura(self, puntos_etiquetados, color=WHITE, etiquetar_vertices=True, mostrar_lados=True,
+                     dashed=False, stroke_width=5, con_labels=True, fill_random=False, fill_after=True):
         vertices = []
         etiquetas = []
         letras = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
         for i, punto in enumerate(puntos_etiquetados):
             if len(punto) == 3:
-                tag, x, y = punto
+                # Si el primer elemento es string, asumimos (etiqueta, x, y)
+                if isinstance(punto[0], str):
+                    tag, x, y = punto
+                # Sino, si el último elemento es string, asumimos (x, y, etiqueta)
+                elif isinstance(punto[-1], str):
+                    x, y, tag = punto
+                else:
+                    # Si ninguno es string, se asigna etiqueta por defecto
+                    x, y, _ = punto
+                    tag = letras[i % len(letras)]
             elif len(punto) == 2:
                 x, y = punto
                 tag = letras[i % len(letras)]
             else:
-                raise ValueError("Cada punto debe ser (etiqueta, x, y) o (x, y)")
+                raise ValueError("Cada punto debe ser (etiqueta, x, y), (x, y, etiqueta) o (x, y)")
             vertices.append(np.array([x, y, 0]))
             etiquetas.append(tag)
-        # Se pasa stroke_width al crear el polígono
         figura = Poligono(vertices, etiquetas, color=color, stroke_width=stroke_width)
+
+        if fill_random:
+            random_color = rgb_to_color([random.random(), random.random(), random.random()])
+            if not fill_after:
+                figura.set_fill(random_color, opacity=0.5)
+
         if dashed:
             longitud = figura.get_length()
             num_dashes = max(40, int(longitud))
-            # Se pasa también stroke_width para que el dash tenga el mismo grosor
             figuraConDashs = DashedVMobject(figura, dashed_ratio=0.4, num_dashes=num_dashes, stroke_width=stroke_width)
             self.play(Create(figuraConDashs))
         else:
             self.play(Create(figura))
-        if mostrar_vertices:
-            self.etiquetar_vertices(vertices, etiquetas)
+
+        if etiquetar_vertices:
+            if con_labels:
+                self.etiquetar_vertices(vertices, etiquetas)
+            else:
+                self.dibujar_puntos(vertices, color)
         if mostrar_lados:
-            self.etiquetar_lados(vertices)
+            self.etiquetar_lados(vertices, etiquetas)
+
+        if fill_random and fill_after:
+            self.play(figura.animate.set_fill(random_color, opacity=0.5))
+
         return figura
 
-    def crear_figura_sin_labels(self, puntos_etiquetados, color=WHITE, dashed=False, stroke_width=2):
+    def crear_figura_coloreada(self, puntos_etiquetados, color=WHITE, etiquetar_vertices=True, mostrar_lados=True,
+                               dashed=False, stroke_width=5, con_labels=True):
         return self.crear_figura(
             puntos_etiquetados,
             color=color,
-            mostrar_vertices=False,
-            mostrar_lados=False,
+            etiquetar_vertices=etiquetar_vertices,
+            mostrar_lados=mostrar_lados,
             dashed=dashed,
-            stroke_width=stroke_width
+            stroke_width=stroke_width,
+            con_labels=con_labels,
+            fill_random=True
         )
 
-    def crear_figura_auxiliar(self, puntos_etiquetados, color=WHITE, dashed=True, stroke_width=2):
+    def crear_figura_coloreada_sin_labels(self, puntos_etiquetados, color=WHITE, dashed=False, stroke_width=2,
+                                          mostrar_puntos=True):
+        return self.crear_figura(
+            puntos_etiquetados,
+            color=color,
+            etiquetar_vertices=mostrar_puntos,
+            mostrar_lados=False,
+            dashed=dashed,
+            stroke_width=stroke_width,
+            con_labels=False,  # Sin etiquetas en los vértices
+            fill_random=True,  # Activa el relleno aleatorio
+            fill_after=True  # Se anima el relleno al finalizar el resto
+        )
+
+    def dibujar_puntos(self, vertices, color=WHITE):
+        dots = VGroup()
+        for p in vertices:
+            # Usamos _crear_punto para obtener el Dot sin animarlo individualmente.
+            dot = self._crear_punto(p, color=color)
+            dots.add(dot)
+        # Animamos todos los puntos juntos.
+        self.play(Create(dots))
+        return dots
+
+    def crear_figura_sin_labels(self, puntos_etiquetados, color=WHITE, dashed=False,
+                                stroke_width=2, mostrar_puntos=True):
+        return self.crear_figura(
+            puntos_etiquetados,
+            color=color,
+            etiquetar_vertices=mostrar_puntos,  # Por defecto se muestran los puntos
+            mostrar_lados=False,
+            dashed=dashed,
+            stroke_width=stroke_width,
+            con_labels=False  # No se muestran etiquetas en los vértices
+        )
+
+    def crear_figura_auxiliar(self, puntos_etiquetados, color=WHITE, dashed=True,
+                              stroke_width=2, mostrar_puntos=True):
         return self.crear_figura_sin_labels(
             puntos_etiquetados,
             color=color,
             dashed=dashed,
-            stroke_width=stroke_width
+            stroke_width=stroke_width,
+            mostrar_puntos=mostrar_puntos
         )
-
-    def crear_punto(self, coords, color=BLUE, radius=0.05, stroke_width=0.5, fill_opacity=1.0, **kwargs):
-        if len(coords) == 2:
-            coords = np.array([coords[0], coords[1], 0])
-        punto = Dot(point=coords, color=color, radius=radius, stroke_width=stroke_width,
-                    fill_opacity=fill_opacity, **kwargs)
-        self.play(Create(punto))
-        return punto
 
     def etiquetar_vertices(self, vertices, etiquetas, color=WHITE, offset=0.3):
         puntos = VGroup()
@@ -314,15 +445,20 @@ class CrearFiguras(Scene):
         self.play(*[FadeIn(p) for p in puntos])
         return puntos
 
-    def etiquetar_lados(self, vertices, color=WHITE, buff=0.3):
+    def etiquetar_lados(self, vertices, etiquetas, color=WHITE, buff=0.3):
         if len(vertices) == 1:
             return VGroup()
         lados = VGroup()
         centroid = np.mean(vertices, axis=0)
         n = len(vertices)
+        # Modo selectivo: se activa si al menos un vértice tiene la etiqueta "le"
+        selective = any(tag == "le" for tag in etiquetas)
         for i in range(n):
             p1 = vertices[i]
             p2 = vertices[(i + 1) % n]
+            # En modo selectivo, solo se etiqueta el lado si ambos extremos tienen "le"
+            if selective and not (etiquetas[i] == "le" and etiquetas[(i + 1) % n] == "le"):
+                continue
             punto_medio = (p1 + p2) / 2
             direccion = punto_medio - centroid
             if np.linalg.norm(direccion) != 0:
